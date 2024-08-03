@@ -1,0 +1,11 @@
+bitsandbytes
+transformers
+peft
+accelerate
+trl
+pandas
+Pillow
+wandb
+sentencepiece
+evaluate
+
