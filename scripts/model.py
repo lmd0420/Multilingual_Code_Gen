@@ -1,48 +1,59 @@
-# Code model with projection
-
-
-from transformers import (
-    AutoModelForCausalLM,
-    AutoConfig,
-)
-from transformers.modeling_utils import PreTrainedModel
-from transformers.configuration_utils import PretrainedConfig
-import torch.nn.functional as F
 import torch
-import logging
 import torch.nn as nn
-import torch.nn.functional as F
-from peft import LoraConfig, get_peft_model
-import os
+from transformers import AutoModelForCausalLM
 
-logger = logging.getLogger(__name__)
-SPL_INDEX = 100
+class MultilingualForCausalLM(AutoModelForCausalLM):
+    def __init__(self, config, encoder_hidden_dim):
+        super().__init__(config)
+        
+        # Define a linear projection layer for multi_embeds
+        self.multi_embeds_proj = nn.Linear(encoder_hidden_dim, config.hidden_size)
 
+    def forward(self, input_ids=None, attention_mask=None, multi_embeds=None, **kwargs):
+        if input_ids is None:
+            raise ValueError("input_ids should be provided.")
+        
+        # Get token embeddings using the model's embedding layer
+        inputs_embeds = self.transformer.wte(input_ids)
 
-class MultilingualProjectorConfig(PretrainedConfig):
-    def __init__(self, src_encoder_dim=1024, tgt_encoder_dim):
-        self.src_encoder_dim = src_encoder_dim
-        self.tgt_encoder_dim = tgt_encoder_dim
-    def save_pretrained(self, save_directory: str | os.PathLike, push_to_hub: bool = False, **kwargs):
-        return super().save_pretrained(save_directory, push_to_hub, **kwargs)
-    def from_pretrained(self,model_path: str | os.PathLike):
-        return super().from_pretrained(pretrained_model_name_or_path=model_path)
+        if multi_embeds is not None:
+            # Project multi_embeds to the same dimension as token embeddings
+            multi_embeds_projected = self.multi_embeds_proj(multi_embeds)
 
-class MultilingualProjectorModel(PreTrainedModel):
-    base_model_prefix = "mlprojmodel"
-    supports_gradient_checkpointing = True
+            # Concatenate token embeddings and projected multi_embeds
+            inputs_embeds = torch.cat([inputs_embeds, multi_embeds_projected], dim=1)
+            
+            # Adjust the attention mask to account for the added embeddings
+            extra_attention = torch.ones(multi_embeds_projected.size()[:-1], dtype=attention_mask.dtype, device=attention_mask.device)
+            attention_mask = torch.cat([attention_mask, extra_attention], dim=1)
+            
+            # Remove the last padding token and adjust attention mask accordingly
+            inputs_embeds = inputs_embeds[:, :-1, :]
+            attention_mask = attention_mask[:, :-1]
 
-    def __init__(self, src_encoder_dim, tgt_encoder_dim):
-        self.projection = nn.Linear(src_encoder_dim, tgt_encoder_dim)
+        # Call the forward method of the base model
+        return super().forward(inputs_embeds=inputs_embeds, attention_mask=attention_mask, **kwargs)
 
-    def forward(self, input_emb):
-        output = self.projection(input_emb)
-        return output
+    def generate(self, input_ids=None, attention_mask=None, multi_embeds=None, **kwargs):
+        if input_ids is None:
+            raise ValueError("input_ids should be provided.")
 
+        # Get token embeddings using the model's embedding layer
+        inputs_embeds = self.transformer.wte(input_ids)
 
-class MultilingualLLM(PreTrainedModel):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+        if multi_embeds is not None:
+            # Project multi_embeds to the same dimension as token embeddings
+            multi_embeds_projected = self.multi_embeds_proj(multi_embeds)
+            
+            # Concatenate token embeddings and projected multi_embeds
+            inputs_embeds = torch.cat([inputs_embeds, multi_embeds_projected], dim=1)
+            
+            # Adjust the attention mask to account for the added embeddings
+            extra_attention = torch.ones(multi_embeds_projected.size()[:-1], dtype=attention_mask.dtype, device=attention_mask.device)
+            attention_mask = torch.cat([attention_mask, extra_attention], dim=1)
+            
+            # Remove the last padding token and adjust attention mask accordingly
+            inputs_embeds = inputs_embeds[:, :-1, :]
+            attention_mask = attention_mask[:, :-1]
 
-    def from_pretrained(self, model_path):
-        encoder_path = os.path.join(model_path, "encoder")
+        return super().generate(inputs_embeds=inputs_embeds, attention_mask=attention_mask, **kwargs)
