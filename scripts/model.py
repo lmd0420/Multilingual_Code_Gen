@@ -14,10 +14,11 @@ class MultilingualForCausalLM(AutoModelForCausalLM):
             raise ValueError("input_ids should be provided.")
         
         # Get token embeddings using the model's embedding layer
-        inputs_embeds = self.transformer.wte(input_ids)
+        inputs_embeds = self.transformer.wte(input_ids) #batch_size * hidden_size (e.g., 4096)
 
         if multi_embeds is not None:
             # Project multi_embeds to the same dimension as token embeddings
+            # multi_embeds 's shape is batch_size * multilingual embedders seq_len *multilingual embedders hiddensize (e.g., 1024)
             multi_embeds_projected = self.multi_embeds_proj(multi_embeds)
 
             # Concatenate token embeddings and projected multi_embeds

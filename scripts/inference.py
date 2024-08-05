@@ -4,6 +4,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import pandas as pd
 from laser_encoders import LaserEncoderPipeline
 from model import MultilingualForCausalLM
+from args import get_args_for_inference
 
 class InferencePipeline:
     def __init__(self, model_path: str, tokenizer_name: str, start_symbol: str, end_symbol: str, lang: str = "eng_Latn"):
@@ -97,18 +98,14 @@ class InferencePipeline:
 
         print(f"Predictions saved to {output_file}")
 
-# # Example Usage
-# if __name__ == "__main__":
-#     model_path = "./path_to_trained_model"
-#     tokenizer_name = "gpt2"
-#     pipeline = InferencePipeline(
-#         model_path=model_path,
-#         tokenizer_name=tokenizer_name,
-#         start_symbol="<s>",
-#         end_symbol="</s>",
-#         lang="eng_Latn"
-#     )
+def main():
+    args = get_args_for_inference()
+    pipeline = InferencePipeline(
+        model_path=args.model_path,
+        tokenizer_name=args.tokenizer_name,
+        start_symbol=args.start_symbol,
+        end_symbol=args.end_symbol,
+        lang=args.lang
+    )
 
-#     csv_file = "data.csv"
-#     dest = "./output_directory"
-#     pipeline.run_inference_and_save(csv_file, dest)
+    pipeline.run_inference_and_save(csv_file=args.csv_file, dest=args.dest)
