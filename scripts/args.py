@@ -1,219 +1,90 @@
 import argparse
 
 
-def get_args_for_encoder_training():
-    # Define options
-    parser = argparse.ArgumentParser(description="Template")
+def get_args_for_fine_tuning():
+    """
+    Parses command-line arguments and returns them as an argparse.Namespace object.
 
-    # Dataset options
+    Returns:
+        argparse.Namespace: Parsed command-line arguments.
+    """
+    parser = argparse.ArgumentParser(description="Fine-tuning arguments")
 
-    ### BLOCK DESIGN ###
-    # Data
+    # Add command-line arguments
     parser.add_argument(
-        "--eeg_dataset", default=None, help="EEG dataset path"
-    )  # 5-95Hz
-    parser.add_argument("--image_dir", default=None, help="ImageNet dataset path")
-    # Splits
-    parser.add_argument(
-        "--splits_path", default=None, help="splits path"
-    )  # All subjects
-    ### BLOCK DESIGN ###
-    parser.add_argument(
-        "--output",
+        "--model_name",
         type=str,
         required=True,
-        help="Directory to save the model checkpoints and logs.",
+        help="The name of the model to be fine-tuned.",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Directory for saving model checkpoints and logs.",
     )
 
-    parser.add_argument("--clip_model", default="openai/clip-vit-base-patch32")
-
+    # TrainingArguments parameters
     parser.add_argument(
-        "-sn", "--split_num", default=0, type=int, help="split number"
-    )  # leave this always to zero.
-
-    # Subject selecting
+        "--num_train_epochs", type=int, default=20, help="Number of training epochs."
+    )
     parser.add_argument(
-        "-sub",
-        "--subject",
-        default=0,
+        "--per_device_train_batch_size",
         type=int,
-        help="choose a subject from 1 to 6, default is 0 (all subjects)",
-    )
-
-    # Time options: select from 20 to 460 samples from EEG data
-    parser.add_argument(
-        "-tl", "--time_low", default=20, type=float, help="lowest time value"
+        default=4,
+        help="Batch size for training.",
     )
     parser.add_argument(
-        "-th", "--time_high", default=460, type=float, help="highest time value"
-    )
-    # Training options
-    parser.add_argument("--save_every", type=int, default=5)
-
-    parser.add_argument("--device", type=str, default="cuda")
-
-    # train args
-
-    parser.add_argument(
-        "--batch_size", type=int, default=16, help="Batch size for training."
-    )
-    parser.add_argument(
-        "--num_epochs", type=int, default=100, help="Number of epochs for training."
+        "--per_device_eval_batch_size",
+        type=int,
+        default=4,
+        help="Batch size for evaluation.",
     )
     parser.add_argument(
         "--save_steps",
-        default=5000,
         type=int,
-        help="Number of steps between saving checkpoints.",
+        default=1000,
+        help="Number of steps between checkpoints.",
     )
     parser.add_argument(
-        "--logging_steps", default=30, type=int, help="Number of steps between logging."
-    )
-    parser.add_argument(
-        "--learning_rate",
-        default=2e-4,
-        type=float,
-        help="The initial learning rate for Adam.",
-    )
-    parser.add_argument(
-        "--optim",
-        default="adamw_hf",
-        type=str,
-        help="Optimizer to use for training.",
-    )
-    parser.add_argument(
-        "--weight_decay", default=0.001, type=float, help="Weight decay to apply."
-    )
-    parser.add_argument(
-        "--max_grad_norm",
-        default=0.3,
-        type=float,
-        help="Max gradient norm to clip gradients.",
-    )
-    parser.add_argument(
-        "--max_steps",
-        default=-1,
+        "--save_total_limit",
         type=int,
-        help="If > 0: set total number of training steps to perform.",
+        default=5,
+        help="Limit on the total number of checkpoints.",
     )
     parser.add_argument(
-        "--warmup_ratio",
-        default=0.3,
-        type=float,
-        help="Ratio of total steps to perform linear learning rate warmup.",
-    )
-    parser.add_argument(
-        "--group_by_length",
-        action="store_true",
-        help="Whether to group samples of roughly the same length together.",
-    )
-    parser.add_argument(
-        "--lr_scheduler_type",
-        default="constant",
+        "--evaluation_strategy",
         type=str,
-        help="Type of learning rate scheduler.",
-    )
-    # Parse arguments
-    args = parser.parse_args()
-    return args
-
-
-def get_args_for_llm_finetuning():
-    # Define options
-    parser = argparse.ArgumentParser(description="Template")
-
-    # Dataset options
-
-    ### BLOCK DESIGN ###
-    # Data
-    parser.add_argument(
-        "--eeg_dataset", default=None, help="EEG dataset path"
-    )  # 5-95Hz
-    parser.add_argument("--image_dir", default=None, help="ImageNet dataset path")
-    # Splits
-    parser.add_argument(
-        "--splits_path", default=None, help="splits path"
-    )  # All subjects
-    ### BLOCK DESIGN ###
-    parser.add_argument(
-        "--output",
-        type=str,
-        required=True,
-        help="Directory to save the model checkpoints and logs.",
+        default="steps",
+        choices=["no", "epoch", "steps"],
+        help="Evaluation strategy to use.",
     )
     parser.add_argument(
-        "--llm_backbone_name_or_path",
-        type=str,
-        default="",
-        help="Name or path of the image tower model.",
-    )
-    parser.add_argument(
-        "--load_in_8bit", default=False, help="load LLM in 8 bit", action="store_true"
-    )
-    parser.add_argument(
-        "--use_lora", default=False, help="load LLM in 8 bit", action="store_true"
-    )
-    parser.add_argument(
-        "--no_stage3", default=False, help="Directly begin stage4", action="store_true"
-    )
-    parser.add_argument(
-        "--eeg_encoder_path",
-        type=str,
-        required=True,
-        help="Path to the fine-tuned EEG encoder",
-    )
-    parser.add_argument("--clip_model", default="openai/clip-vit-base-patch32")
-
-    parser.add_argument(
-        "-sn", "--split_num", default=0, type=int, help="split number"
-    )  # leave this always to zero.
-
-    # Subject selecting
-    parser.add_argument(
-        "-sub",
-        "--subject",
-        default=0,
+        "--eval_steps",
         type=int,
-        help="choose a subject from 1 to 6, default is 0 (all subjects)",
-    )
-
-    # Time options: select from 20 to 460 samples from EEG data
-    parser.add_argument(
-        "-tl", "--time_low", default=20, type=float, help="lowest time value"
+        default=10,
+        help="Number of steps between evaluations.",
     )
     parser.add_argument(
-        "-th", "--time_high", default=460, type=float, help="highest time value"
-    )
-    # Training options
-    parser.add_argument("--save_every", type=int, default=5)
-
-    parser.add_argument("--device", type=str, default="cuda")
-
-    # train args
-
-    parser.add_argument(
-        "--batch_size", type=int, default=16, help="Batch size for training."
-    )
-    parser.add_argument(
-        "--num_epochs_image", type=int, default=5, help="Number of epochs for training."
-    )
-    parser.add_argument(
-        "--num_epochs_eeg", type=int, default=5, help="Number of epochs for training."
-    )
-    parser.add_argument(
-        "--save_steps",
-        default=5000,
+        "--logging_steps",
         type=int,
-        help="Number of steps between saving checkpoints.",
+        default=10,
+        help="Number of steps between logging.",
     )
     parser.add_argument(
-        "--logging_steps", default=30, type=int, help="Number of steps between logging."
+        "--learning_rate", type=float, default=2e-4, help="Learning rate."
     )
     parser.add_argument(
-        "--learning_rate",
-        default=2e-4,
-        type=float,
-        help="The initial learning rate for Adam.",
+        "--warmup_steps", type=int, default=500, help="Number of warmup steps."
+    )
+    parser.add_argument(
+        "--weight_decay", type=float, default=0.001, help="Weight decay."
+    )
+    parser.add_argument(
+        "--fp16", type=bool, default=False, help="Use mixed precision training."
+    )
+    parser.add_argument(
+        "--bf16", type=bool, default=True, help="Use mixed precision training."
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -222,21 +93,10 @@ def get_args_for_llm_finetuning():
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
     parser.add_argument(
-        "--optim",
-        default="adamw_hf",
-        type=str,
-        help="Optimizer to use for training.",
-    )
-    parser.add_argument(
-        "--weight_decay", default=0.001, type=float, help="Weight decay to apply."
-    )
-    parser.add_argument(
-        "--fp16",
-        action="store_true",
-        help="Whether to use 16-bit (mixed precision) training.",
-    )
-    parser.add_argument(
-        "--bf16", action="store_true", help="Whether to use bfloat16 training."
+        "--warmup_ratio",
+        default=0.3,
+        type=float,
+        help="Ratio of total steps to perform linear learning rate warmup.",
     )
     parser.add_argument(
         "--max_grad_norm",
@@ -245,91 +105,71 @@ def get_args_for_llm_finetuning():
         help="Max gradient norm to clip gradients.",
     )
     parser.add_argument(
-        "--max_steps",
-        default=-1,
-        type=int,
-        help="If > 0: set total number of training steps to perform.",
-    )
-    parser.add_argument(
-        "--warmup_ratio",
-        default=0.3,
-        type=float,
-        help="Ratio of total steps to perform linear learning rate warmup.",
-    )
-    parser.add_argument(
-        "--group_by_length",
-        action="store_true",
-        help="Whether to group samples of roughly the same length together.",
-    )
-    parser.add_argument(
-        "--lr_scheduler_type",
-        default="constant",
+        "--optim",
+        default="paged_adamw_32bit",
         type=str,
-        help="Type of learning rate scheduler.",
+        help="Optimizer to use for training.",
     )
-    parser.add_argument(
-        "--report_to",
-        default="wandb",
-        type=str,
-        help="Where to report training metrics.",
-    )
+
     # Parse arguments
     args = parser.parse_args()
+
     return args
 
 
-def get_args_for_llm_inference():
-    # Define options
-    parser = argparse.ArgumentParser(description="Template")
+def get_args_for_inference():
+    """
+    Parses command-line arguments for the inference pipeline.
 
-    # Dataset options
+    Returns:
+        argparse.Namespace: Parsed command-line arguments.
+    """
+    parser = argparse.ArgumentParser(description="Inference pipeline arguments")
 
-    ### BLOCK DESIGN ###
-    # Data
-    parser.add_argument(
-        "--eeg_dataset", default=None, help="EEG dataset path"
-    )  # 5-95Hz
-    parser.add_argument("--image_dir", default=None, help="ImageNet dataset path")
-    # Splits
-    parser.add_argument(
-        "--splits_path", default=None, help="splits path"
-    )  # All subjects
-    ### BLOCK DESIGN ###
+    # Required arguments
     parser.add_argument(
         "--model_path",
         type=str,
         required=True,
-        help="Directory to load the model checkpoints",
+        help="Path to the trained model directory.",
     )
-    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument(
-        "-sn", "--split_num", default=0, type=int, help="split number"
-    )  # leave this always to zero.
-
-    # Subject selecting
-    parser.add_argument(
-        "-sub",
-        "--subject",
-        default=0,
-        type=int,
-        help="choose a subject from 1 to 6, default is 0 (all subjects)",
+        "--csv_file", type=str, required=True, help="Path to the input CSV file."
     )
 
-    # Time options: select from 20 to 460 samples from EEG data
+    # Optional arguments
     parser.add_argument(
-        "-tl", "--time_low", default=20, type=float, help="lowest time value"
+        "--tokenizer_name",
+        type=str,
+        default="gpt2",
+        help='Name of the tokenizer to use. Default is "gpt2".',
     )
     parser.add_argument(
-        "-th", "--time_high", default=460, type=float, help="highest time value"
+        "--start_symbol",
+        type=str,
+        default="<s>",
+        help='Start symbol to prepend to the input text. Default is "<s>".',
+    )
+    parser.add_argument(
+        "--end_symbol",
+        type=str,
+        default="</s>",
+        help='End symbol to append to the input text. Default is "</s>".',
+    )
+    parser.add_argument(
+        "--lang",
+        type=str,
+        default="eng_Latn",
+        help='Language code for the LASER encoder. Default is "eng_Latn".',
     )
     parser.add_argument(
         "--dest",
         type=str,
-        required=True,
-        help="Directory to save the model checkpoints and logs.",
+        default="./output_directory",
+        help='Destination directory for the output CSV file. Default is "./output_directory".',
     )
 
     # Parse arguments
     args = parser.parse_args()
-    return args
 
+    return args

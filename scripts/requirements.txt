@@ -8,4 +8,4 @@ Pillow
 wandb
 sentencepiece
 evaluate
-
+laser-encoders
