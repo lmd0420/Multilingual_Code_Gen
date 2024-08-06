@@ -21,7 +21,7 @@ def main(args):
     val_dataset = MultilingualMBPPDataset(split="validation", tokenizer=tokenizer)
 
     # Define data collator for language modeling
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
@@ -91,7 +91,6 @@ def main(args):
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        data_collator=data_collator,
     )
 
     # Start fine-tuning

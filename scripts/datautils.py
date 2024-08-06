@@ -15,20 +15,27 @@ class MultilingualMBPPDataset(Dataset):
         subset_name="sanitized",
         split="train",
         tokenizer=None,
-        start_symbol="<s>",
-        end_symbol="</s>",
+        prompt_begin=" [INST]",
+        prompt_end="[/INST] ",
         max_seq_length=100,
     ):
+        #     if "llama" in tokenizer_path.lower():
+        #         prompt_begin = " <|start_header_id|>"
+        #         prompt_end = "<|end_header_id|> "
+        #     elif "gemma" in tokenizer_path.lower():
+        #         prompt_begin = " <start_of_turn>user\n"
+        #         prompt_end = "<end_of_turn>"
         self.dataset = load_dataset(dataset_name, subset_name, split=split)
         self.tokenizer = tokenizer
-        self.start_symbol = start_symbol
-        self.end_symbol = end_symbol
 
         # Initialize the LASER encoder
         self.encoder = LaserEncoderPipeline(laser="laser2")
         self.encoder.encoder.use_cuda = False
         self.encoder.encoder.encoder.cpu()
         self.max_len = max_seq_length
+        self.prompt_begin = prompt_begin
+        self.prompt_end = prompt_end
+        self.prompt_prefix = f"{self.prompt_begin} <<SYS>>\\nYou are an expert Python programmer, and here are your task:\\n<</SYS>>\\n\\n"
 
     def __len__(self):
         return len(self.dataset)
@@ -37,84 +44,99 @@ class MultilingualMBPPDataset(Dataset):
         item = self.dataset[idx]
 
         # Prepare the input text
-        input_text = f"{self.start_symbol} {item['prompt']} {self.end_symbol}"
+        input_text = item["prompt"]
 
         # Prepare the output code (without start and end symbols)
         output_code = item["code"]
 
-        # Concatenate input text and output code
-        combined_text = f"{input_text} {output_code}" if output_code else input_text
-
         # Tokenize the combined text
-        encodings = self.tokenizer(
-            combined_text,
-            truncation=True,
+        input_ids1 = self.tokenizer(
+            self.prompt_prefix + input_text.strip(),
             padding="max_length",
-            return_tensors="pt",
+            add_special_tokens=False,
             max_length=self.max_len,
-        )
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
+        input_ids2 = self.tokenizer(
+            self.prompt_end + "\\n" + output_code,
+            padding="max_length",
+            add_special_tokens=False,
+            max_length=self.max_len,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
         # Compute multi_embeds using the LASER encoder
         multi_embeds = self.encoder.encode_sentences([item["prompt"]])
 
         return {
-            "input_ids": encodings["input_ids"].squeeze(),
-            "attention_mask": encodings["attention_mask"].squeeze(),
+            "input_ids1": input_ids1.squeeze(),
+            "input_ids2": input_ids2.squeeze(),
             "multi_embeds": multi_embeds.squeeze(),
-            "labels": encodings["input_ids"].squeeze(),
         }
 
 
 class MultilingualMBPPDatasetInference(Dataset):
     def __init__(
         self,
-        csv_file: str,
-        tokenizer,
-        start_symbol: str,
-        end_symbol: str,
-        lang: str = "eng_Latn",
+        dataset_name,
+        split="train",
+        tokenizer=None,
+        prompt_begin=" [INST]",
+        prompt_end="[/INST] ",
+        max_seq_length=100,
     ):
-        """
-        Dataset class for processing a CSV file with text and code columns for inference.
-
-        Args:
-            csv_file (str): Path to the CSV file containing data.
-            tokenizer (PreTrainedTokenizer): Tokenizer for processing the text data.
-            start_symbol (str): Symbol to prepend to the input text.
-            end_symbol (str): Symbol to append to the input text.
-            lang (str): Language code for the LASER encoder. Default is "eng_Latn".
-        """
-        self.data = pd.read_csv(csv_file)
+        #     if "llama" in tokenizer_path.lower():
+        #         prompt_begin = " <|start_header_id|>"
+        #         prompt_end = "<|end_header_id|> "
+        #     elif "gemma" in tokenizer_path.lower():
+        #         prompt_begin = " <start_of_turn>user\n"
+        #         prompt_end = "<end_of_turn>"
+        self.dataset = pd.read_csv(dataset_name)["prompt"]
         self.tokenizer = tokenizer
-        self.start_symbol = start_symbol
-        self.end_symbol = end_symbol
-        self.encoder = LaserEncoderPipeline(lang=lang)
+
+        # Initialize the LASER encoder
+        self.encoder = LaserEncoderPipeline(laser="laser2")
+        self.encoder.encoder.use_cuda = False
+        self.encoder.encoder.encoder.cpu()
+        self.max_len = max_seq_length
+        self.prompt_begin = prompt_begin
+        self.prompt_end = prompt_end
+        self.prompt_prefix = f"{self.prompt_begin} <<SYS>>\\nYou are an expert Python programmer, and here are your task:\\n<</SYS>>\\n\\n"
 
     def __len__(self):
-        return len(self.data)
+        return len(self.dataset)
 
     def __getitem__(self, idx):
-        item = self.data.iloc[idx]
-        text = item["prompt"]
-        code = item["code"]
+        item = self.dataset[idx]
 
-        # Append start and end symbols to the text
-        processed_text = f"{self.start_symbol} {text} {self.end_symbol}"
+        # Prepare the input text
+        input_text = item["prompt"]
 
-        # Tokenize the text
-        tokenized_output = self.tokenizer(
-            processed_text, padding="max_length", truncation=True, return_tensors="pt"
-        )
-
-        # Generate LASER embeddings
-        multi_embeds = self.encoder.encode_sentences([text])
-        multi_embeds = torch.tensor(multi_embeds)
+        # Tokenize the combined text
+        input_ids1 = self.tokenizer(
+            self.prompt_prefix + input_text.strip(),
+            padding="max_length",
+            add_special_tokens=False,
+            max_length=self.max_len,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
+        input_ids2 = self.tokenizer(
+            self.prompt_end + "\\n",
+            padding="max_length",
+            add_special_tokens=False,
+            max_length=self.max_len,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
+        # Compute multi_embeds using the LASER encoder
+        multi_embeds = self.encoder.encode_sentences([item["prompt"]])
 
         return {
-            "input_ids": tokenized_output["input_ids"].squeeze(0),
-            "attention_mask": tokenized_output["attention_mask"].squeeze(0),
-            "multi_embeds": multi_embeds.squeeze(0),
-            "text": text,
-            "code": code,
+            "input_ids1": input_ids1.squeeze(),
+            "input_ids2": input_ids2.squeeze(),
+            "multi_embeds": multi_embeds.squeeze(),
         }
 
 
