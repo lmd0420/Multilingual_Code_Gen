@@ -1,0 +1,7 @@
+Language,Incomplete Code,Syntax Errors,Logical Errors,All Tests Passed,Average Code Length
+hi,0,128,46,83,155.49805447470817
+zh-cn,1,131,42,83,150.984375
+en,1,122,27,107,166.85546875
+es,1,128,32,96,172.9140625
+ja,2,130,32,92,156.6392156862745
+ru,1,124,42,89,145.61328125
