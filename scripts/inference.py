@@ -6,8 +6,16 @@ from laser_encoders import LaserEncoderPipeline
 from model import MultilingualForCausalLM
 from args import get_args_for_inference
 
+
 class InferencePipeline:
-    def __init__(self, model_path: str, tokenizer_name: str, start_symbol: str, end_symbol: str, lang: str = "eng_Latn"):
+    def __init__(
+        self,
+        model_path: str,
+        tokenizer_name: str,
+        start_symbol: str,
+        end_symbol: str,
+        lang: str = "eng_Latn",
+    ):
         """
         Initializes the inference pipeline.
 
@@ -18,8 +26,14 @@ class InferencePipeline:
             end_symbol (str): Symbol to append to the input text.
             lang (str): Language code for the LASER encoder. Default is "eng_Latn".
         """
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
-        self.model = MultilingualForCausalLM.from_pretrained(model_path, encoder_hidden_dim=1024)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            tokenizer_name, trust_remote_code=True
+        )
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "right"
+        self.model = MultilingualForCausalLM.from_pretrained(
+            model_path, encoder_hidden_dim=1024
+        )
         self.start_symbol = start_symbol
         self.end_symbol = end_symbol
         self.encoder = LaserEncoderPipeline(lang=lang)
@@ -39,40 +53,47 @@ class InferencePipeline:
 
         # Tokenize the input text
         tokenized_input = self.tokenizer(
-            processed_text,
-            padding='max_length',
-            truncation=True,
-            return_tensors='pt'
+            processed_text, padding="max_length", truncation=True, return_tensors="pt"
         )
 
-        input_ids = tokenized_input['input_ids']
-        attention_mask = tokenized_input['attention_mask']
+        input_ids = tokenized_input["input_ids"]
+        attention_mask = tokenized_input["attention_mask"]
 
         # Generate LASER embeddings
         multi_embeds = self.encoder.encode_sentences([input_text])
         multi_embeds = torch.tensor(multi_embeds)
 
         # Adjust attention mask to accommodate the multi_embeds
-        attention_mask = torch.cat([attention_mask, torch.ones((attention_mask.size(0), multi_embeds.size(1)), dtype=torch.long)], dim=1)
+        attention_mask = torch.cat(
+            [
+                attention_mask,
+                torch.ones(
+                    (attention_mask.size(0), multi_embeds.size(1)), dtype=torch.long
+                ),
+            ],
+            dim=1,
+        )
 
         # Run the model's forward pass with input embeddings
         with torch.no_grad():
             outputs = self.model(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
-                multi_embeds=multi_embeds
+                multi_embeds=multi_embeds,
             )
-        
+
         # Generate text from the model's output
         generated_ids = self.model.generate(
-            inputs_embeds=outputs['inputs_embeds'],
+            inputs_embeds=outputs["inputs_embeds"],
             attention_mask=attention_mask,
-            max_length=50
+            max_length=50,
         )
 
         # Decode the generated IDs back to text
-        generated_text = self.tokenizer.decode(generated_ids[0], skip_special_tokens=True)
-        
+        generated_text = self.tokenizer.decode(
+            generated_ids[0], skip_special_tokens=True
+        )
+
         return generated_text
 
     def run_inference_and_save(self, csv_file: str, dest: str):
@@ -85,9 +106,9 @@ class InferencePipeline:
         """
         # Load the CSV
         df = pd.read_csv(csv_file)
-        
+
         # Run inference on each row and store the results
-        df['generated_text'] = df['text'].apply(self.infer)
+        df["generated_text"] = df["text"].apply(self.infer)
 
         # Create the output file path
         base_name = os.path.basename(csv_file).replace(".csv", "_predicted.csv")
@@ -98,6 +119,7 @@ class InferencePipeline:
 
         print(f"Predictions saved to {output_file}")
 
+
 def main():
     args = get_args_for_inference()
     pipeline = InferencePipeline(
@@ -105,7 +127,7 @@ def main():
         tokenizer_name=args.tokenizer_name,
         start_symbol=args.start_symbol,
         end_symbol=args.end_symbol,
-        lang=args.lang
+        lang=args.lang,
     )
 
     pipeline.run_inference_and_save(csv_file=args.csv_file, dest=args.dest)
