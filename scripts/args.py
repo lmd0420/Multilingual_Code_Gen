@@ -88,7 +88,7 @@ def get_args_for_fine_tuning():
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
-        default=8,
+        default=1,
         type=int,
         help="Number of updates steps to accumulate before performing a backward/update pass.",
     )
@@ -137,31 +137,6 @@ def get_args_for_inference():
         "--csv_file", type=str, required=True, help="Path to the input CSV file."
     )
 
-    # Optional arguments
-    parser.add_argument(
-        "--tokenizer_name",
-        type=str,
-        default="gpt2",
-        help='Name of the tokenizer to use. Default is "gpt2".',
-    )
-    parser.add_argument(
-        "--start_symbol",
-        type=str,
-        default="<s>",
-        help='Start symbol to prepend to the input text. Default is "<s>".',
-    )
-    parser.add_argument(
-        "--end_symbol",
-        type=str,
-        default="</s>",
-        help='End symbol to append to the input text. Default is "</s>".',
-    )
-    parser.add_argument(
-        "--lang",
-        type=str,
-        default="eng_Latn",
-        help='Language code for the LASER encoder. Default is "eng_Latn".',
-    )
     parser.add_argument(
         "--dest",
         type=str,

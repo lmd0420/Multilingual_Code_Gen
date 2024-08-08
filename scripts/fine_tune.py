@@ -1,7 +1,8 @@
+# sample command : python fine_tune.py --model_name mistralai/Mistral-7B-Instruct-v0.3 --output_dir results_mistral7b-it
+
 import torch
 
 from transformers import AutoTokenizer, Trainer, TrainingArguments
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from datasets import load_dataset
 from torch.utils.data import DataLoader
 from transformers import DataCollatorForLanguageModeling, BitsAndBytesConfig
@@ -29,39 +30,13 @@ def main(args):
         bnb_4bit_use_double_quant=False,
     )
 
-    # Load base model and apply LoRA using PEFT
     model = MultilingualForCausalLM.from_pretrained(
         args.model_name,
-        encoder_hidden_dim=1024,
-        load_multilingual_proj=False,
+        is_training=True,
+        use_lora=False,
+        freeze_llm_params=True,
         quantization_config=bnb_config,
     )
-
-    # Prepare the model for LoRA fine-tuning
-    model = prepare_model_for_kbit_training(model)
-
-    # Define LoRA configuration
-    lora_config = LoraConfig(
-        r=64,  # Rank of LoRA
-        lora_alpha=16,  # LoRA alpha
-        lora_dropout=0.1,  # LoRA dropout
-        bias="none",
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-            "lm_head",
-            "linear",
-        ],
-    )
-
-    # Apply LoRA to the model
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,  # Directory for saving model checkpoints and logs
@@ -84,6 +59,7 @@ def main(args):
         lr_scheduler_type="cosine",
         max_grad_norm=args.max_grad_norm,
         optim=args.optim,
+        gradient_checkpointing=True,  # doesnt work well with lora
     )
     # Initialize Trainer
     trainer = Trainer(

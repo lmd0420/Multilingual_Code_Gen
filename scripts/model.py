@@ -1,45 +1,140 @@
 import torch
+import json
+import os
 import torch.nn as nn
-from transformers import AutoModelForCausalLM, AutoConfig
+from transformers import AutoModelForCausalLM, AutoConfig, BitsAndBytesConfig
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, PeftModel
+
 
 IGNORE_INDEX = -100
+ML_ENCODER_HIDDEN_DIM = 1024
+ML_SEQ_LEN = 10
 
 
 class MultilingualForCausalLM(nn.Module):
-    def __init__(self, base_model, encoder_hidden_dim, multilingual_sequence_len=10):
+    def __init__(
+        self,
+        base_model,
+        base_model_name,
+        use_lora=True,
+        is_training=False,
+        freeze_llm_params=True,
+        *model_args,
+        **kwargs,
+    ):
         super().__init__()
         self.base_model = base_model
+        self.base_model_name = base_model_name
         self.hidden_size = base_model.config.hidden_size
-        self.multilingual_sequence_len = multilingual_sequence_len
         self.multi_embeds_proj = nn.Linear(
-            encoder_hidden_dim, self.hidden_size * self.multilingual_sequence_len
+            ML_ENCODER_HIDDEN_DIM, self.hidden_size * ML_SEQ_LEN
         )
         self.padding_token_id = self.base_model.config.eos_token_id
         self.bos_token_id = self.base_model.config.bos_token_id
+        self.gradient_checkpointing_enable = (
+            self.base_model.gradient_checkpointing_enable
+        )
+        self.quantization_config = kwargs.get("quantization_config", None)
+        self.use_lora = use_lora
+        self.freeze_llm_params = freeze_llm_params
 
-        # Freeze all model parameters except the projection layer
-        for param in self.base_model.parameters():
-            param.requires_grad = False
+        if use_lora and is_training:
+            lora_config = LoraConfig(
+                r=64,  # Rank of LoRA
+                lora_alpha=16,  # LoRA alpha
+                lora_dropout=0.1,  # LoRA dropout
+                bias="none",
+                target_modules=[
+                    "q_proj",
+                    "k_proj",
+                    "v_proj",
+                    "o_proj",
+                    "gate_proj",
+                    "up_proj",
+                    "down_proj",
+                    "lm_head",
+                    "linear",
+                ],
+            )
 
-        for param in self.multi_embeds_proj.parameters():
-            param.requires_grad = True
+            # Apply LoRA to the model
+            self.base_model = get_peft_model(self.base_model, lora_config)
+            self.base_model.print_trainable_parameters()
+
+            if freeze_llm_params:
+                # Freeze all model parameters except the projection layer
+                for param in self.base_model.parameters():
+                    param.requires_grad = False
+
+                for param in self.multi_embeds_proj.parameters():
+                    param.requires_grad = True
+            self.base_model.enable_input_require_grads()  # for gradient checkpointing
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs):
-        load_multilingual_proj = kwargs.pop("load_multilingual_proj", False)
-        encoder_hidden_dim = kwargs.pop("encoder_hidden_dim")
-        multilingual_sequence_len = kwargs.pop("multilingual_sequence_len", 10)
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path,
+        is_training=False,
+        use_lora=False,
+        freeze_llm_params=False,
+        *model_args,
+        **kwargs,
+    ):
+        if freeze_llm_params:
+            # LoRa is not required as the entire network is frozen
+            use_lora = False
+        if use_lora and not is_training:
+            with open(
+                os.path.join(pretrained_model_name_or_path, "additional_config.json")
+            ) as f:
+                config = json.load(f)
+                base_model_name = config["base_model_name"]
+                quant_config = config.get("quantization_config", None)
+                if quant_config is not None:
+                    kwargs["quantization_config"] = BitsAndBytesConfig.from_dict(
+                        quant_config
+                    )
 
-        # Load the base model using the parent class's from_pretrained method
-        base_model = AutoModelForCausalLM.from_pretrained(
-            pretrained_model_name_or_path, *model_args, **kwargs
-        )
+            base_model = AutoModelForCausalLM.from_pretrained(
+                base_model_name, *model_args, **kwargs
+            )
+            base_model = PeftModel.from_pretrained(
+                base_model,
+                pretrained_model_name_or_path,
+            )
+            base_model = base_model.merge_and_unload()
+        elif not use_lora and is_training:
+            base_model = AutoModelForCausalLM.from_pretrained(
+                pretrained_model_name_or_path, *model_args, **kwargs
+            )
+            base_model_name = pretrained_model_name_or_path
+        else:
+            with open(
+                os.path.join(pretrained_model_name_or_path, "additional_config.json")
+            ) as f:
+                config = json.load(f)
+            base_model_name = config["base_model_name"]
+            quant_config = config.get("quantization_config", None)
+            if quant_config is not None:
+                kwargs["quantization_config"] = BitsAndBytesConfig.from_dict(
+                    quant_config
+                )
+            base_model = AutoModelForCausalLM.from_pretrained(
+                base_model_name, *model_args, **kwargs
+            )
 
         # Instantiate the custom model
-        model = cls(base_model, encoder_hidden_dim, multilingual_sequence_len)
+        model = cls(
+            base_model,
+            base_model_name,
+            is_training=is_training,
+            use_lora=use_lora,
+            freeze_llm_params=freeze_llm_params,
+            **kwargs,
+        )
 
         # Initialize or load multi_embeds_proj depending on the flag
-        if load_multilingual_proj:
+        if not is_training:
             multilingual_proj_state_dict = torch.load(
                 f"{pretrained_model_name_or_path}/multi_embeds_proj.pth"
             )
@@ -51,12 +146,18 @@ class MultilingualForCausalLM(nn.Module):
 
     def save_pretrained(self, save_directory):
         # Save the base model
-        self.base_model.save_pretrained(save_directory)
+        if not self.freeze_llm_params:
+            self.base_model.save_pretrained(save_directory, "llm")
+        with open(os.path.join(save_directory, "additional_config.json"), "w") as f:
+            config = {"base_model_name": self.base_model_name}
+            if self.quantization_config is not None:
+                config["quantization_config"] = self.quantization_config.to_dict()
+            json.dump(config, f)
 
         # Save the projection layer separately
         torch.save(
             self.multi_embeds_proj.state_dict(),
-            f"{save_directory}/multi_embeds_proj.pth",
+            os.path.join(save_directory, "multi_embeds_proj.pth"),
         )
 
     def prepare_inputs(self, input_ids1, input_ids2, mm_emb, type="train"):
@@ -147,22 +248,27 @@ class MultilingualForCausalLM(nn.Module):
         multi_embeds=None,
         **kwargs,
     ):
+        # if self.gradient_checkpointing_enable and not self.gc_flag:
+        #     # called via trainer
+        #     self.base_model.gradient_checkpointing_enable()
+        #     self.gc_flag = True
+
         if input_ids1 is None or input_ids2 is None:
             raise ValueError("input_ids should be provided.")
 
         if multi_embeds is not None:
             multi_embeds_projected = self.multi_embeds_proj(multi_embeds)
             multi_embeds_projected = multi_embeds_projected.view(
-                -1, self.multilingual_sequence_len, self.hidden_size
+                -1, ML_SEQ_LEN, self.hidden_size
             )
-            with torch.no_grad():
-                input_embeds, attention_masks, labels = self.prepare_inputs(
-                    input_ids1=input_ids1,
-                    input_ids2=input_ids2,
-                    mm_emb=multi_embeds_projected,
-                    type="train",
-                )
-                kwargs["labels"] = labels
+
+            input_embeds, attention_masks, labels = self.prepare_inputs(
+                input_ids1=input_ids1,
+                input_ids2=input_ids2,
+                mm_emb=multi_embeds_projected,
+                type="train",
+            )
+            kwargs["labels"] = labels
             return self.base_model(
                 inputs_embeds=input_embeds, attention_mask=attention_masks, **kwargs
             )
@@ -184,13 +290,13 @@ class MultilingualForCausalLM(nn.Module):
         if multi_embeds is not None:
             multi_embeds_projected = self.multi_embeds_proj(multi_embeds)
             multi_embeds_projected = multi_embeds_projected.view(
-                -1, self.multilingual_sequence_len, self.hidden_size
+                -1, ML_SEQ_LEN, self.hidden_size
             )
             with torch.no_grad():
                 input_embeds, attention_masks, labels = self.prepare_inputs(
                     input_ids1=input_ids1,
                     input_ids2=input_ids2,
-                    mm_emb=multi_embeds,
+                    mm_emb=multi_embeds_projected,
                     type="test",
                 )
                 return self.base_model.generate(

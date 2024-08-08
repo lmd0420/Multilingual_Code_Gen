@@ -17,7 +17,7 @@ class MultilingualMBPPDataset(Dataset):
         tokenizer=None,
         prompt_begin=" [INST]",
         prompt_end="[/INST] ",
-        max_seq_length=100,
+        max_seq_length=250,
     ):
         #     if "llama" in tokenizer_path.lower():
         #         prompt_begin = " <|start_header_id|>"
@@ -35,7 +35,7 @@ class MultilingualMBPPDataset(Dataset):
         self.max_len = max_seq_length
         self.prompt_begin = prompt_begin
         self.prompt_end = prompt_end
-        self.prompt_prefix = f"{self.prompt_begin} <<SYS>>\\nYou are an expert Python programmer, and here are your task:\\n<</SYS>>\\n\\n"
+        self.prompt_prefix = f"{self.prompt_begin} <<SYS>>\\nYou are an expert Python programmer.\\n<</SYS>>\\n\\n"
 
     def __len__(self):
         return len(self.dataset)

@@ -1,3 +1,5 @@
+# sample command: python inference.py --model_path results_codellama7b-instruct-hf --csv_file ../Repo/Data/test.es.sanitized.csv --dest tmp.csv
+
 import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -5,16 +7,20 @@ import pandas as pd
 from laser_encoders import LaserEncoderPipeline
 from model import MultilingualForCausalLM
 from args import get_args_for_inference
+from peft import LoraConfig, PeftModel
+from laser_encoders import LaserEncoderPipeline
+from tqdm import tqdm
+
+tqdm.pandas()
 
 
 class InferencePipeline:
     def __init__(
         self,
         model_path: str,
-        tokenizer_name: str,
-        start_symbol: str,
-        end_symbol: str,
-        lang: str = "eng_Latn",
+        prompt_begin=" [INST]",
+        prompt_end="[/INST] ",
+        max_seq_length=250,
     ):
         """
         Initializes the inference pipeline.
@@ -27,16 +33,21 @@ class InferencePipeline:
             lang (str): Language code for the LASER encoder. Default is "eng_Latn".
         """
         self.tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_name, trust_remote_code=True
+            model_path, trust_remote_code=True
         )
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "right"
         self.model = MultilingualForCausalLM.from_pretrained(
-            model_path, encoder_hidden_dim=1024
+            model_path, use_lora=False, is_training=False
         )
-        self.start_symbol = start_symbol
-        self.end_symbol = end_symbol
-        self.encoder = LaserEncoderPipeline(lang=lang)
+
+        self.prompt_begin = prompt_begin
+        self.prompt_end = prompt_end
+        self.prompt_prefix = f"{self.prompt_begin} <<SYS>>\\nYou are an expert Python programmer.\\n<</SYS>>\\n\\n"
+        self.max_len = max_seq_length
+        self.encoder = LaserEncoderPipeline(laser="laser2")
+        self.encoder.encoder.use_cuda = False
+        self.encoder.encoder.encoder.cpu()
 
     def infer(self, input_text: str):
         """
@@ -49,51 +60,39 @@ class InferencePipeline:
             str: The generated text from the model.
         """
         # Process the input text
-        processed_text = f"{self.start_symbol} {input_text} {self.end_symbol}"
-
-        # Tokenize the input text
-        tokenized_input = self.tokenizer(
-            processed_text, padding="max_length", truncation=True, return_tensors="pt"
-        )
-
-        input_ids = tokenized_input["input_ids"]
-        attention_mask = tokenized_input["attention_mask"]
-
-        # Generate LASER embeddings
+        input_ids1 = self.tokenizer(
+            self.prompt_prefix + input_text.strip(),
+            add_special_tokens=False,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
+        input_ids2 = self.tokenizer(
+            self.prompt_end,
+            add_special_tokens=False,
+            truncation=True,
+            return_tensors="pt",
+        ).input_ids
+        # print(input_ids1)
+        # Compute multi_embeds using the LASER encoder
         multi_embeds = self.encoder.encode_sentences([input_text])
         multi_embeds = torch.tensor(multi_embeds)
 
-        # Adjust attention mask to accommodate the multi_embeds
-        attention_mask = torch.cat(
-            [
-                attention_mask,
-                torch.ones(
-                    (attention_mask.size(0), multi_embeds.size(1)), dtype=torch.long
-                ),
-            ],
-            dim=1,
-        )
-
-        # Run the model's forward pass with input embeddings
-        with torch.no_grad():
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                multi_embeds=multi_embeds,
-            )
-
         # Generate text from the model's output
         generated_ids = self.model.generate(
-            inputs_embeds=outputs["inputs_embeds"],
-            attention_mask=attention_mask,
-            max_length=50,
+            input_ids1=input_ids1,
+            input_ids2=input_ids2,
+            multi_embeds=multi_embeds,
+            max_new_tokens=self.max_len,
+            temperature=0.8,
         )
-
+        # print(generated_ids)
         # Decode the generated IDs back to text
         generated_text = self.tokenizer.decode(
             generated_ids[0], skip_special_tokens=True
         )
-
+        print(input_text)
+        # print(generated_text)
+        # print("+=============================+")
         return generated_text
 
     def run_inference_and_save(self, csv_file: str, dest: str):
@@ -108,7 +107,7 @@ class InferencePipeline:
         df = pd.read_csv(csv_file)
 
         # Run inference on each row and store the results
-        df["generated_text"] = df["text"].apply(self.infer)
+        df["results"] = df["prompt"].progress_apply(self.infer)
 
         # Create the output file path
         base_name = os.path.basename(csv_file).replace(".csv", "_predicted.csv")
@@ -122,12 +121,10 @@ class InferencePipeline:
 
 def main():
     args = get_args_for_inference()
-    pipeline = InferencePipeline(
-        model_path=args.model_path,
-        tokenizer_name=args.tokenizer_name,
-        start_symbol=args.start_symbol,
-        end_symbol=args.end_symbol,
-        lang=args.lang,
-    )
+    pipeline = InferencePipeline(model_path=args.model_path)
 
     pipeline.run_inference_and_save(csv_file=args.csv_file, dest=args.dest)
+
+
+if __name__ == "__main__":
+    main()
