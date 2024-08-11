@@ -43,7 +43,9 @@ class InferencePipeline:
 
         self.prompt_begin = prompt_begin
         self.prompt_end = prompt_end
-        self.prompt_prefix = f"{self.prompt_begin} <<SYS>>\\nYou are an expert Python programmer.\\n<</SYS>>\\n\\n"
+        self.prompt_prefix = (
+            f"{self.prompt_begin} <<SYS>>\nProvide answers in Python.\n<</SYS>>\n\n"
+        )
         self.max_len = max_seq_length
         self.encoder = LaserEncoderPipeline(laser="laser2")
         self.encoder.encoder.use_cuda = False
@@ -91,8 +93,8 @@ class InferencePipeline:
             generated_ids[0], skip_special_tokens=True
         )
         print(input_text)
-        # print(generated_text)
-        # print("+=============================+")
+        print(generated_text)
+        print("+=============================+")
         return generated_text
 
     def run_inference_and_save(self, csv_file: str, dest: str):
