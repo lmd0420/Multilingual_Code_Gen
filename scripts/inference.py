@@ -44,7 +44,7 @@ class InferencePipeline:
         self.prompt_begin = prompt_begin
         self.prompt_end = prompt_end
         self.prompt_prefix = (
-            f"{self.prompt_begin} <<SYS>>\nProvide answers in Python.\n<</SYS>>\n\n"
+            f"{self.prompt_begin} <<SYS>>\\nProvide answers in Python.\\n<</SYS>>\\n\\n"
         )
         self.max_len = max_seq_length
         self.encoder = LaserEncoderPipeline(laser="laser2")
