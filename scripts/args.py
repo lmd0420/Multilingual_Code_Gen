@@ -133,6 +133,13 @@ def get_args_for_inference():
         required=True,
         help="Path to the trained model directory.",
     )
+    # this is required only for baseline
+    parser.add_argument(
+        "--base_model_name",
+        type=str,
+        required=False,
+        help="Name of the base model.",
+    )
     parser.add_argument(
         "--csv_file", type=str, required=True, help="Path to the input CSV file."
     )
