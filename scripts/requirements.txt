@@ -9,3 +9,6 @@ wandb
 sentencepiece
 evaluate
 laser-encoders
+nltk
+jieba 
+janome

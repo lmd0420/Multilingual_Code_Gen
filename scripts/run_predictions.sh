@@ -1,9 +1,15 @@
-MODEL_DIR=$1
-INPUT_DIR=$2
+BASE_MODEL=$1
+MODEL_DIR=$2
+INPUT_DIR=$3
+
 
 files="test.zh-cn.sanitized.csv test.en.sanitized.csv test.es.sanitized.csv test.hi.sanitized.csv test.ja.sanitized.csv test.ru.sanitized.csv"
 
-for file in $files
-do
-python inference.py --model_path $MODEL_DIR --csv_file $INPUT_DIR/$file --dest $MODEL_DIR
-done
+
+python inference.py --base_model_name $1 --model_path $2 --csv_file $3/test.en.sanitized.csv --dest $2 --lang en
+python inference.py --base_model_name $1 --model_path $2 --csv_file $3/test.es.sanitized.csv --dest $2 --lang es
+python inference.py --base_model_name $1 --model_path $2 --csv_file $3/test.hi.sanitized.csv --dest $2 --lang hi
+python inference.py --base_model_name $1 --model_path $2 --csv_file $3/test.ru.sanitized.csv --dest $2 --lang ru
+python inference.py --base_model_name $1 --model_path $2 --csv_file $3/test.ja.sanitized.csv --dest $2 --lang ja
+python inference.py --base_model_name $1 --model_path $2 --csv_file $3/test.zh-cn.sanitized.csv --dest $2 --lang zh-cn
+
